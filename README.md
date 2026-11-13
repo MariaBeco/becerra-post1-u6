@@ -39,7 +39,7 @@ nasm -f bin lab6i.asm -o lab6i.com      ; lab6_instrucciones.asm
 nasm -f bin lab6m.asm -o lab6m.com      ; lab6_modos.asm
 ```
 
-Los dos ensamblan sin errores ni advertencias. En formato `.COM`, `CS`, `DS`, `ES` y `SS` apuntan al mismo segmento, el programa empieza en el offset `0100h` y la pila arranca en `SP=FFFEh`. Las direcciones de este README son offsets dentro de ese segmento.
+Los dos ensamblan sin errores ni advertencias: `LAB6I.COM` ocupa 173 bytes. En formato `.COM`, `CS`, `DS`, `ES` y `SS` apuntan al mismo segmento, el programa empieza en el offset `0100h` y la pila arranca en `SP=FFFEh`. Las direcciones de este README son offsets dentro de ese segmento.
 
 ---
 
@@ -115,7 +115,7 @@ Las cuatro primeras operaciones parten del mismo valor, `AL = 81h = 1000 0001b`,
 | `ROR bh, 1` | BH | `81h` | `C0h` (`1100 0000b`) | 1 | El bit 0 volvió a entrar como bit 7 |
 | `ROL al, 4` | AL | `A5h` | `5Ah` | 0 | Los nibbles A y 5 se intercambiaron |
 
-Las cuatro dejan CF=1 porque en los dos casos el bit que sale vale 1. La diferencia está en el registro. Con `SHL`/`SHR` ese bit desaparece. Con `ROL`/`ROR` reaparece en el extremo opuesto. Tras el bloque, DEBUG muestra `BX=C002h` (BH=C0h, BL=02h), `CX=0003h`, `DX=0040h` y `AX=005Ah`.
+Las cuatro dejan CF=1 porque en los dos casos el bit que sale vale 1. La diferencia está en el registro. Con `SHL`/`SHR` ese bit desaparece. Con `ROL`/`ROR` reaparece en el extremo opuesto. Tras el bloque, DEBUG muestra `BX=C002h` (BH=C0h, BL=02h), `CX=0003h`, `DX=0040h` y `AX=005Ah`. DEBUG también marca `OV` tras `SHL`, `ROL` y `SHR`: con un desplazamiento de 1 bit, OF indica que el bit de signo cambió (de 1 a 0), y vuelve a `NV` tras `ROR bh, 1` porque el resultado `C0h` mantiene el bit 7 en 1.
 
 ## Decisiones técnicas — Parte 1
 
@@ -234,7 +234,7 @@ La arquitectura x86 asigna a cada registro base un segmento por defecto, y esa a
 | P1-1 | Compilación de la Parte 1 sin errores en DOSBox | `capturas/p1_cp1_compilacion.png` |
 | P1-2 | Trazado de `ADD`, `SUB`, `AND`, `TEST` y `CMP` con sus flags | `capturas/p1_cp2_flags.png` |
 | P1-3 | `AX=000F` al final del bucle y `AX=0078` tras la variante factorial | `capturas/p1_cp3_bucle_factorial.png` |
-| P1-4 | Bloque 5: BL=02, CL=03, DL=40, BH=C0 con CF=1 y AL=5A | `capturas/p1_cp4_rotacion.png` |
+| P1-4 | Bloque 5: BL=02, CL=03, DL=40, BH=C0 con CF=1 y AL=5A | `capturas/p1_cp4_rotacion.png`, `capturas/p1_cp4_rotacion_2.png` |
 | P2-1 | Compilación de la Parte 2 y dump `d 100` con array, nota1 y nota2 | `capturas/p2_cp1_dump.png` |
 | P2-2 | Trazado del modo indirecto (`SI`, `AX=0055`) | `capturas/p2_cp2_indirecto.png` |
 | P2-3 | `AX=0096` al final del bucle normal y del inverso | `capturas/p2_cp3_indexado.png` |
