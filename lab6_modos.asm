@@ -68,6 +68,17 @@ fin_indirecto:
         loop .bucle_array
 fin_array:                      ; aqui AX = 150 (0096h)
 
+        ; Extension: el mismo recorrido en orden inverso, de array[4] a array[0]
+        xor  ax, ax             ; AX = 0 (acumulador)
+        mov  bx, array          ; BX = direccion base
+        mov  cx, 5              ; CX = numero de elementos
+        mov  si, 8              ; SI = 4 * 2 bytes (ultimo elemento)
+.bucle_inverso:
+        add  ax, [bx + si]      ; AX += array[SI/2]
+        sub  si, 2              ; elemento anterior (2 bytes)
+        loop .bucle_inverso
+fin_inverso:                    ; aqui AX = 150 (0096h) y SI = FFFEh
+
         ; Campos del "struct" con desplazamiento fijo: EA = BX + d
         mov  bx, nota1          ; BX = base del registro
         mov  ax, [bx]           ; AX = nota1    = 85 (offset 0)
