@@ -127,3 +127,127 @@ La elección depende de si el bit que sale del registro debe descartarse o conse
 
 `LOOP .bucle_suma` hace en una sola instrucción lo que `DEC cx` seguido de `JNZ .bucle_suma` hace en dos. Además, ocupa 2 bytes (`E2 FB`) frente a los 3 de la pareja (`49` y `75 xx`). Deja claro en el código fuente que se trata de un bucle contado con `CX` y evita olvidar el decremento. Sin embargo, el número de instrucciones escritas no indica cuántos ciclos de reloj tardará la ejecución. Cada instrucción tiene su propio costo de decodificación y ejecución, y ese costo depende de la microarquitectura. En el 8086 original `LOOP` tomaba unos 17 ciclos cuando saltaba, frente a los 2 de `DEC` más los 16 de `JNZ`, así que era ligeramente más rápida. A partir del 80486, y de forma muy marcada en los procesadores actuales de Intel y AMD, `LOOP` se implementa con microcódigo o como varias microoperaciones y no se fusiona con otras instrucciones. En cambio, `DEC` y `JNZ` son instrucciones simples que el decodificador puede fusionar en una sola microoperación, de modo que una sola instrucción puede ser la más lenta de las dos opciones. Para el bucle de 5 iteraciones del Bloque 4, la diferencia sería de unas decenas de ciclos, es decir, nanosegundos, y no se notaría ni dentro de DOSBox, cuya velocidad la fija el parámetro `cycles` y no el procesador real. La respuesta cambia si el mismo bucle se ejecuta millones de veces dentro de un programa más grande: ahí los ciclos de más por iteración se multiplican y `DEC/JNZ` es la opción recomendada en código moderno. Para este laboratorio se mantuvo `LOOP` porque prioriza la legibilidad y el ejemplo de la guía.
 
+---
+
+# Parte 2: Demostración de modos de direccionamiento
+
+## Mapa de memoria de los datos
+
+Dump obtenido con `d 100` en DEBUG:
+
+| Etiqueta | Offset | Valores | Bytes en memoria |
+|---|---|---|---|
+| `array` | `0102h` | 10, 20, 30, 40, 50 | `0A 00 14 00 1E 00 28 00 32 00` |
+| `nota1` | `010Ch` | 85 | `55 00` |
+| `nota2` | `010Eh` | 73 | `49 00` |
+| `promedio` | `0110h` | 0, y 79 tras el modo indirecto | `00 00` → `4F 00` |
+| `var_x` | `0112h` | 0FFFFh, y 0 tras el modo directo | `FF FF` → `00 00` |
+| `tabla_hex` | `0114h` | "0123456789ABCDEF" | `30 31 … 46` |
+| `matriz` | `0124h` | 1 a 9, por filas | `01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00` |
+
+## Tabla resumen de los modos de direccionamiento
+
+| Modo | Dirección efectiva (EA) | Instrucción NASM | Valor observado en DEBUG |
+|---|---|---|---|
+| Inmediato | No hay acceso a memoria de datos: el operando va en el opcode | `mov ax, 100` | `U` muestra `MOV AX,0064` (`B8 64 00`); `AX=0064h` |
+| Directo | EA = desplazamiento fijo | `mov ax, [var_x]` | `U` muestra `MOV AX,[0112]`; `AX=FFFFh` |
+| Directo (escritura) | EA = `0112h` | `mov word [var_x], 0` | `var_x` pasa de `FF FF` a `00 00` |
+| Indirecto por registro | EA = SI | `mov ax, [si]` con `SI=010Ch` | `AX=0055h` (85) |
+| Indexado base + índice | EA = BX + SI | `mov ax, [bx + si]` con `BX=0102h`, `SI=0004h` | EA = `0106h`, `AX=001Eh` (30 = `array[2]`) |
+| Indexado en bucle | EA = BX + SI, con SI = 0, 2, 4, 6, 8 | `add ax, [bx + si]` | `AX=0096h` (150) al final |
+| Base + desplazamiento | EA = BX + d | `mov dx, [bx + 4]` con `BX=010Ch` | EA = `0110h`, `DX=004Fh` (79) |
+| Indirecto con BP (marco de pila) | EA = BP − d, segmento **SS** | `mov ax, [bp - 2]` con `BP=FFFCh` | EA = `SS:FFFAh`, `AX=0063h` (99) |
+| Doble indexación (matriz) | EA = base + fila·6 + columna·2 | `mov dx, [bx + si]` con `BX=0124h`, `SI=000Ah` | EA = `012Eh`, `DX=0006h` |
+
+## Modo inmediato y modo directo
+
+En el modo inmediato, el valor forma parte de la instrucción. Al desensamblar con `u 136`, `MOV AX,0064` aparece codificada como `B8 64 00`: el 64h (100) está en el propio opcode, y la CPU no lee ninguna dirección de datos para obtenerlo. En el modo directo, lo que va en el opcode es la **dirección**. `MOV AX,[0112]` se codifica como `A1 12 01`, y la CPU lee la palabra de `DS:0112h` (`var_x`), por lo que `AX=FFFFh`. Con `mov bx, [array]` se obtiene `BX=000Ah` (10) y con `mov cx, [nota1]`, `CX=0055h` (85). Después, `mov word [var_x], 0` escribe en memoria, y el dump confirma que `0112h` pasa a `00 00`.
+
+## Trazado del modo indirecto por registro
+
+Sesión de DEBUG desde `g 154` y luego `t` paso a paso:
+
+| Instrucción | Registro modificado | Valor resultante |
+|---|---|---|
+| `mov si, nota1` | SI | `0000h` antes, `010Ch` después |
+| `mov ax, [si]` | AX | `0055h` (85) |
+| `mov si, nota2` | SI | `010Eh` |
+| `mov bx, [si]` | BX | `0049h` (73) |
+| `add ax, bx` | AX | `009Eh` (158) |
+| `shr ax, 1` | AX | `004Fh` (79) |
+| `mov si, promedio` | SI | `0110h` |
+| `mov [si], ax` | memoria `0110h` | `4F 00` (79) |
+
+La instrucción `mov ax, [si]` es la misma las dos veces; lo único que cambia entre los dos accesos es el valor de `SI`. Esa es la idea de un puntero: la dirección se decide en tiempo de ejecución.
+
+## Modo indexado y recorrido inverso
+
+`mov ax, [bx + si]` con `BX=0102h` y `SI=0004h` lee `array[2]`: EA = `0102h + 4 = 0106h`, y `AX=001Eh` (30). En el bucle de suma, `SI` avanza de 2 en 2 (0, 2, 4, 6, 8), porque cada elemento ocupa una palabra. `AX` pasa por 10, 30, 60, 100 y 150. En `fin_array` (offset `0199h`), **AX = 0096h = 150**.
+
+La extensión recorre el array al revés. Empieza en `SI=8`, que es `array[4]`, y resta 2 en cada vuelta. `AX` pasa por 50, 90, 120, 140 y 150. En `fin_inverso` (offset `01ABh`) también queda **AX = 0096h = 150**. `SI` termina en `FFFEh`, porque la última resta se hace después de leer `array[0]`, pero ese valor ya no se usa para leer. Esta extensión está en el commit "feat: recorrido inverso del array".
+
+Al final del bloque, `BX = nota1 = 010Ch` sirve como base del "registro de estudiante". `[bx]`, `[bx + 2]` y `[bx + 4]` devuelven `AX=0055h`, `CX=0049h` y `DX=004Fh` (85, 73 y el promedio 79).
+
+## Marco de pila con BP
+
+| Momento | SP | BP | Observación |
+|---|---|---|---|
+| Antes del bloque | `FFFEh` | `0000h` | Valores iniciales del `.COM` |
+| Tras `push bp` / `mov bp, sp` | `FFFCh` | `FFFCh` | BP queda igual a SP: base del marco |
+| Tras `sub sp, 4` | `FFF8h` | `FFFCh` | Se reservan 4 bytes para dos locales |
+| Tras escribir los locales | `FFF8h` | `FFFCh` | `d ss:fff8 l 4` muestra `FA 00 63 00` |
+| Tras `add ax, [bp - 4]` | `FFF8h` | `FFFCh` | `AX=015Dh` (349) |
+| Tras `mov sp, bp` / `pop bp` | `FFFEh` | `0000h` | BP y SP vuelven a los valores de antes del bloque |
+
+`local_1 = 99` está en `SS:BP−2 = SS:FFFAh` (`63 00`) y `local_2 = 250` en `SS:BP−4 = SS:FFF8h` (`FA 00`). Por eso, al volcar 4 bytes desde `FFF8h`, primero aparece `FA 00` y luego `63 00`. DEBUG no acepta expresiones como `bp-4` en el comando `d`, así que se usa la dirección calculada: `FFFCh − 4 = FFF8h`.
+
+## Acceso a la matriz con doble indexación
+
+`matriz[1][2]` se ubica así: EA = base + fila × (3 elementos × 2 bytes) + columna × 2 bytes = `0124h + 6 + 4 = 012Eh`.
+
+| Instrucción | Registro | Valor |
+|---|---|---|
+| `mov ax, 1` / `mov bx, 3` / `mul bx` | AX | `0003h` (fila × ancho, en elementos) |
+| `shl ax, 1` | AX | `0006h` (desplazamiento de fila en bytes) |
+| `mov si, ax` | SI | `0006h` |
+| `mov cx, 2` / `shl cx, 1` | CX | `0004h` (desplazamiento de columna en bytes) |
+| `add si, cx` | SI | **`000Ah`** (10) |
+| `mov bx, matriz` | BX | `0124h` |
+| `mov dx, [bx + si]` | DX | **`0006h`** = `matriz[1][2]` |
+
+## Decisiones técnicas — Parte 2
+
+### Decisión 3: ¿modo directo o modo indexado para un elemento de posición fija?
+
+`matriz[1][2]` siempre está en la misma dirección, `012Eh`, y esa dirección se conoce al compilar. En el Paso 7, el modo indexado necesitó, antes de leer el dato, un `MUL` (la instrucción más cara de las que se usaron: más de cien ciclos en un 8086 con operando de 16 bits), dos `SHL`, un `ADD` y varios `MOV` para cargar fila, columna y base: unas nueve instrucciones solo para calcular algo que ya se sabía. Con modo directo, `mov dx, [matriz + 10]` (en NASM, `[matriz + 1*6 + 2*2]`) deja ese cálculo al ensamblador. La dirección `012Eh` queda escrita en el opcode y la CPU hace una sola lectura de memoria, sin gastar ciclos ni registros (`AX`, `BX`, `CX`, `SI`) en aritmética de direcciones. Por eso, para un elemento de posición fija, el directo es más eficiente. El indexado deja de ser una mala elección y se vuelve indispensable cuando la fila o la columna no se conocen al compilar: un índice que viene de la entrada del usuario, de otro cálculo o de la variable de control de un bucle. En ese caso no existe una dirección fija que escribir en el opcode, y la EA tiene que calcularse en tiempo de ejecución con base más índice. Para recorrer las 9 posiciones y sumarlas, usar 9 etiquetas o 9 desplazamientos directos funcionaría para una matriz de 3×3, pero no es práctico. El código crece con cada elemento, hay que reescribirlo si cambia el tamaño de la matriz y no sirve si las dimensiones solo se conocen en ejecución. Un bucle indexado, como el de la suma del array, recorre cualquier tamaño con las mismas pocas instrucciones.
+
+### Decisión 4: BP frente a BX/SI en direccionamiento indirecto
+
+La arquitectura x86 asigna a cada registro base un segmento por defecto, y esa asignación refleja su uso previsto. `BP` está pensado para el marco de pila: guarda una copia fija de `SP` al entrar a un procedimiento, y desde ella se alcanzan los parámetros (`[bp+4]`, `[bp+6]`) y las variables locales (`[bp−2]`, `[bp−4]`) aunque `SP` siga cambiando con cada `PUSH`. Por eso `[bp + d]` usa **SS** por defecto. `BX`, `SI` y `DI` están pensados como punteros a datos globales y arreglos, y usan **DS**. Esta separación permite que la pila y los datos vivan en segmentos distintos sin escribir el segmento en cada instrucción. En este laboratorio, al ser un `.COM`, `CS = DS = ES = SS`. Por eso `[bp − 2]` y una lectura equivalente con `BX` llegan al mismo byte, y el resultado observable es idéntico. En un `.EXE` con segmentos separados, por ejemplo DS=1000h y SS=2000h, la diferencia sería crítica. Si un programa cargara en `BP` el offset de una variable global, esperando que `[bp + d]` apuntara al mismo sitio que `[bx + d]`, la CPU leería `SS:offset` en lugar de `DS:offset`. Obtendría basura de la pila sin ningún error visible, y si escribiera podría corromper direcciones de retorno guardadas en la pila. Para forzar a una instrucción con `BP` a usar DS se emplea un prefijo de sobrescritura de segmento: en NASM, `mov ax, [ds:bp + 2]`, que añade el byte `3Eh` antes del opcode. Tiene sentido, por ejemplo, en una rutina que usa `BP` como un registro base más para recorrer una estructura en el segmento de datos porque `BX`, `SI` y `DI` ya están ocupados. También cuando un procedimiento recibe en la pila un puntero cercano a datos de DS y quiere usar `BP` para indexarlo.
+
+---
+
+# Capturas
+
+| # | Checkpoint | Archivo |
+|---|---|---|
+| P1-1 | Compilación de la Parte 1 sin errores en DOSBox | `capturas/p1_cp1_compilacion.png` |
+| P1-2 | Trazado de `ADD`, `SUB`, `AND`, `TEST` y `CMP` con sus flags | `capturas/p1_cp2_flags.png` |
+| P1-3 | `AX=000F` al final del bucle y `AX=0078` tras la variante factorial | `capturas/p1_cp3_bucle_factorial.png` |
+| P1-4 | Bloque 5: BL=02, CL=03, DL=40, BH=C0 con CF=1 y AL=5A | `capturas/p1_cp4_rotacion.png` |
+| P2-1 | Compilación de la Parte 2 y dump `d 100` con array, nota1 y nota2 | `capturas/p2_cp1_dump.png` |
+| P2-2 | Trazado del modo indirecto (`SI`, `AX=0055`) | `capturas/p2_cp2_indirecto.png` |
+| P2-3 | `AX=0096` al final del bucle normal y del inverso | `capturas/p2_cp3_indexado.png` |
+| P2-4 | Marco BP: SP/BP, dump `SS:FFF8` y `AX=015D` | `capturas/p2_cp4_marco_bp.png` |
+| P2-5 | Dump de la matriz y `SI=000A`, `DX=0006` | `capturas/p2_cp5_matriz.png` |
+| P2-6 | Desensamblado `u 136` con los modos inmediato y directo | `capturas/p2_cp6_inmediato_directo.png` |
+
+---
+
+# Conclusiones
+
+- **Los flags cuentan la historia de cada operación.** El mismo `SUB` que da −33 con signo deja CF=1, porque sin signo 12 − 45 requiere préstamo. Leer bien CF, ZF, SF y OF es lo que permite elegir el salto condicional correcto (`JG` con signo frente a `JA` sin signo).
+- **Desplazar no es lo mismo que rotar.** `SHL`/`SHR` sirven para la aritmética por potencias de 2. `ROL`/`ROR` conservan todos los bits y por eso resuelven tareas como el intercambio de nibbles.
+- **Menos instrucciones no significa menos ciclos.** `LOOP` es más corta y legible que `DEC/JNZ`, pero en procesadores modernos suele ser más lenta.
+- **El modo de direccionamiento decide cuándo se calcula la dirección.** En el inmediato y el directo, el ensamblador la fija al compilar. En el indirecto y el indexado, la CPU la calcula en tiempo de ejecución. Esa flexibilidad es la que permite punteros, arreglos, matrices y bucles.
+- **BP y BX no son intercambiables en general.** En un `.COM` dan el mismo resultado porque todos los segmentos coinciden. En un `.EXE`, BP trabaja sobre SS y BX sobre DS, y confundirlos produce errores silenciosos.
