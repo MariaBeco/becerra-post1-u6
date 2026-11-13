@@ -99,4 +99,14 @@ inicio:
         loop .bucle_suma        ; CX--; si CX != 0 repite
 fin_suma:                       ; aqui AX = 15 (000Fh)
 
+        ; Variante (Checkpoint 3): factorial 5! = 1*2*3*4*5 = 120
+        mov  ax, 1              ; AX = 1 (acumulador del producto)
+        mov  cx, 5              ; CX = 5 iteraciones
+        mov  bx, 1              ; BX = primer factor
+.bucle_fact:
+        mul  bx                 ; DX:AX = AX * BX (DX queda en 0)
+        inc  bx                 ; BX = siguiente factor
+        loop .bucle_fact        ; CX--; si CX != 0 repite
+fin_fact:                       ; aqui AX = 120 (0078h)
+
         int  20h                ; retornar a DOS
