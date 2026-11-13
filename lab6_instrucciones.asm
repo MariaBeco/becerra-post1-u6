@@ -109,4 +109,27 @@ fin_suma:                       ; aqui AX = 15 (000Fh)
         loop .bucle_fact        ; CX--; si CX != 0 repite
 fin_fact:                       ; aqui AX = 120 (0078h)
 
+; == BLOQUE 5: Rotacion - ROL/ROR frente a SHL/SHR ===========================
+        mov  al, 81h            ; AL = 1000 0001b: bit 7 y bit 0 en 1
+
+        ; SHL: el bit que sale por la izquierda se pierde (solo queda en CF)
+        mov  bl, al             ; BL = 81h
+        shl  bl, 1              ; BL = 0000 0010b = 02h; CF = 1
+
+        ; ROL: el bit que sale por la izquierda vuelve a entrar por la derecha
+        mov  cl, al             ; CL = 81h
+        rol  cl, 1              ; CL = 0000 0011b = 03h; CF = 1
+
+        ; El mismo contraste por el extremo derecho
+        mov  dl, al             ; DL = 81h
+        shr  dl, 1              ; DL = 0100 0000b = 40h; CF = 1 (bit 0 perdido)
+
+        mov  bh, al             ; BH = 81h
+        ror  bh, 1              ; BH = 1100 0000b = C0h; CF = 1 (bit 0 pasa a bit 7)
+
+        ; Uso practico de ROL: intercambiar los nibbles de un byte
+        mov  al, 0A5h           ; AL = 1010 0101b (nibble alto A, nibble bajo 5)
+        rol  al, 4              ; AL = 0101 1010b = 5Ah (nibbles intercambiados)
+fin_rotacion:
+
         int  20h                ; retornar a DOS
